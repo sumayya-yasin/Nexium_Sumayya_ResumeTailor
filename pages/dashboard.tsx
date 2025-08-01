@@ -44,9 +44,7 @@ export default function Dashboard() {
       name: '',
       email: '',
       phone: '',
-      location: '',
-      linkedin: '',
-      website: ''
+      address: ''
     },
     summary: '',
     skills: [],
@@ -287,6 +285,73 @@ export default function Dashboard() {
     })
   }
 
+  const extractSummary = (text: string) => {
+    const summarySection = text.match(/summary[:\n]([\s\S]*?)(?=experience|education|skills|$)/i)
+    return summarySection?.[1]?.trim() || ''
+  }
+
+  const downloadTailoredResume = (resume: any) => {
+    const tailoredContent = resume.tailoredContent || resume
+    let content = ''
+
+    // Personal Info
+    if (tailoredContent.personalInfo) {
+      const info = tailoredContent.personalInfo
+      content += `${info.name || ''}\n`
+      content += `${info.email || ''}\n`
+      content += `${info.phone || ''}\n`
+      content += `${info.address || info.location || ''}\n\n`
+    }
+
+    // Summary
+    if (tailoredContent.summary) {
+      content += `PROFESSIONAL SUMMARY\n${tailoredContent.summary}\n\n`
+    }
+
+    // Experience
+    if (tailoredContent.experience && tailoredContent.experience.length > 0) {
+      content += `PROFESSIONAL EXPERIENCE\n`
+      tailoredContent.experience.forEach((exp: any) => {
+        content += `${exp.title} - ${exp.company}\n`
+        content += `${exp.duration}\n`
+        content += `${exp.description}\n\n`
+      })
+    }
+
+    // Education
+    if (tailoredContent.education && tailoredContent.education.length > 0) {
+      content += `EDUCATION\n`
+      tailoredContent.education.forEach((edu: any) => {
+        content += `${edu.degree} - ${edu.school}\n`
+        content += `${edu.year}\n\n`
+      })
+    }
+
+    // Skills
+    if (tailoredContent.skills && tailoredContent.skills.length > 0) {
+      content += `SKILLS\n${tailoredContent.skills.join(', ')}\n\n`
+    }
+
+    const blob = new Blob([content], { type: 'text/plain' })
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tailored-resume-${new Date().toISOString().split('T')[0]}.txt`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    window.URL.revokeObjectURL(url)
+  }
+
+  const downloadAIResponse = () => {
+    if (!aiResponse) return
+    downloadTailoredResume(aiResponse.tailoredResume)
+  }
+
+  const downloadSavedResume = (resume: SavedResume) => {
+    downloadTailoredResume(resume.tailoredContent);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -438,7 +503,7 @@ export default function Dashboard() {
                       <span className="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-sm font-medium border border-purple-500/30">
                         Match: {aiResponse.score}%
                       </span>
-                      <Button size="sm" variant="outline" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+                      <Button size="sm" variant="outline" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500" onClick={downloadAIResponse}>
                         <Download className="w-4 h-4 mr-1" />
                         Download PDF
                       </Button>
@@ -450,8 +515,23 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="bg-slate-700 p-4 rounded-lg">
-                    <h4 className="font-semibold text-white mb-2">Optimized Summary</h4>
+                    <h4 className="font-semibold text-white mb-2">Optimized Resume</h4>
                     <p className="text-slate-300 text-sm">{aiResponse.tailoredResume?.summary}</p>
+                    {aiResponse.tailoredResume?.experience?.map((exp: any, index: number) => (
+                      <div key={index}>
+                        <h5 className="font-semibold text-white mt-2">{exp.title}</h5>
+                        <p className="text-slate-300 text-sm">{exp.company} - {exp.duration}</p>
+                        <p className="text-slate-300 text-sm">{exp.description}</p>
+                      </div>
+                    ))}
+                    {aiResponse.tailoredResume?.education?.map((edu: any, index: number) => (
+                      <div key={index}>
+                        <h5 className="font-semibold text-white mt-2">{edu.degree}</h5>
+                        <p className="text-slate-300 text-sm">{edu.school} - {edu.year}</p>
+                      </div>
+                    ))}
+                    <h5 className="font-semibold text-white mt-2">Skills</h5>
+                    <p className="text-slate-300 text-sm">{aiResponse.tailoredResume?.skills?.join(', ')}</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-slate-700 p-4 rounded-lg">
@@ -525,7 +605,7 @@ export default function Dashboard() {
                           </div>
                         </div>
                         <div className="flex items-center space-x-2">
-                          <Button variant="outline" size="sm" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+                          <Button variant="outline" size="sm" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500" onClick={() => downloadSavedResume(resume)}>
                             <Download className="w-4 h-4 mr-1" />
                             Download
                           </Button>
