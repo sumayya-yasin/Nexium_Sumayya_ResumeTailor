@@ -50,7 +50,6 @@ export default function Dashboard() {
     skills: [],
     experience: [],
     education: [],
-    projects: [],
     rawText: ''
   })
 

@@ -12,7 +12,7 @@ The AI Resume Tailor is a full-stack web application built with modern technolog
 - **Styling:** Tailwind CSS + shadcn/ui components
 - **State Management:** React hooks and local state
 - **Build Tool:** Next.js built-in bundling
-- **Deployment:** Replit hosting
+- **Deployment:** Vercel
 
 ### Backend
 - **Runtime:** Node.js with Next.js API routes
@@ -33,7 +33,7 @@ The AI Resume Tailor is a full-stack web application built with modern technolog
 - **OpenAI API:** Content generation and optimization
 - **Supabase:** Authentication, user management, profiles
 - **MongoDB Atlas:** Document storage and retrieval
-- **Replit:** Application hosting and deployment
+- **Vercel:** Application hosting and deployment
 
 ## Architecture Diagram
 
@@ -347,91 +347,3 @@ POST /api/utils/parse-resume
    ├── Set Auth Headers
    └── Enable Protected Routes
 ```
-
-## Security Architecture
-
-### Authentication & Authorization
-- **JWT Tokens:** Supabase-managed authentication
-- **Row Level Security:** Database-level access control
-- **API Rate Limiting:** Prevent abuse and ensure fair usage
-- **Input Validation:** Sanitize and validate all inputs
-
-### Data Protection
-- **Encryption in Transit:** HTTPS/TLS for all communications
-- **Encryption at Rest:** Database-level encryption
-- **Data Isolation:** User data separated by authentication
-- **Privacy Controls:** GDPR-compliant data handling
-
-### API Security
-- **CORS Configuration:** Restrict cross-origin requests
-- **Request Validation:** Schema validation for all endpoints
-- **Error Handling:** Secure error messages without data leakage
-- **Logging & Monitoring:** Track API usage and errors
-
-## Performance Optimization
-
-### Frontend Performance
-- **Code Splitting:** Dynamic imports for optimal bundles
-- **Image Optimization:** Next.js automatic image optimization
-- **Caching Strategy:** Browser and CDN caching
-- **Lazy Loading:** Load components and data on demand
-
-### Backend Performance
-- **Database Indexing:** Optimized queries with proper indexes
-- **Connection Pooling:** Efficient database connections
-- **Caching Layer:** Redis for frequently accessed data
-- **API Response Compression:** Gzip compression for responses
-
-### AI Processing Optimization
-- **Request Batching:** Group multiple AI requests
-- **Response Caching:** Cache similar requests/responses
-- **Fallback Handling:** Graceful degradation when AI unavailable
-- **Processing Timeouts:** Prevent long-running requests
-
-## Monitoring & Analytics
-
-### Application Monitoring
-- **Error Tracking:** Real-time error monitoring and alerts
-- **Performance Metrics:** Response times, throughput, uptime
-- **User Analytics:** Usage patterns, feature adoption
-- **AI Performance:** Success rates, processing times
-
-### Business Metrics
-- **User Engagement:** DAU, MAU, session duration
-- **Feature Usage:** Resume processing, downloads, saves
-- **Success Tracking:** Job application outcomes
-- **Performance Indicators:** Match scores, user satisfaction
-
-## Deployment Architecture
-
-### Replit Deployment
-- **Environment Configuration:** Development, staging, production
-- **Environment Variables:** Secure secret management
-- **Build Process:** Automated builds with CI/CD
-- **Health Checks:** Application health monitoring
-
-### Scaling Considerations
-- **Horizontal Scaling:** Multiple app instances
-- **Database Scaling:** Read replicas, connection pooling
-- **CDN Integration:** Static asset distribution
-- **Load Balancing:** Request distribution across instances
-
-## Future Architecture Enhancements
-
-### Microservices Migration
-- **AI Service:** Dedicated AI processing service
-- **User Service:** Authentication and profile management
-- **Document Service:** Resume and job description management
-- **Analytics Service:** Usage tracking and insights
-
-### Advanced Features
-- **Real-time Updates:** WebSocket connections for live updates
-- **Offline Support:** Progressive Web App capabilities
-- **Mobile Apps:** Native iOS/Android applications
-- **API Gateway:** Centralized API management and routing
-
-### Infrastructure Improvements
-- **Container Orchestration:** Docker and Kubernetes deployment
-- **Message Queues:** Asynchronous processing with Redis/RabbitMQ
-- **Multi-region Deployment:** Global content distribution
-- **Advanced Monitoring:** APM tools and observability stack
