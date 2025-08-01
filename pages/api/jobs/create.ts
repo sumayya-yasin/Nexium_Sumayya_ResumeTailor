@@ -40,33 +40,28 @@ export default async function handler(
 
     const { db } = await connectToDatabase()
 
-    const result = await db.collection('jobs').insertOne({
+    const jobDescription = {
       userId: user.id,
       title,
       company,
       description,
       requirements: requirements || [],
       keywords: keywords || [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    })
+      createdAt: new Date()
+    }
 
-    return res.status(201).json({
+    const result = await db.collection('job_descriptions').insertOne(jobDescription)
+
+    return res.status(200).json({
       success: true,
       data: {
-        _id: result.insertedId,
-        userId: user.id,
-        title,
-        company,
-        description,
-        requirements,
-        keywords,
-        createdAt: new Date()
+        ...jobDescription,
+        _id: result.insertedId
       }
     })
 
   } catch (error) {
-    console.error('Error creating job:', error)
+    console.error('Error creating job description:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 }

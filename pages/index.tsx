@@ -8,13 +8,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Zap, FileText } from "lucide-react";
 
-
 const Home: NextPage = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const handleAuth = async () => {
+      // Check if there's a hash in the URL (from magic link)
       if (window.location.hash) {
         const { data, error } = await supabase.auth.getSession()
         if (data.session && !error) {
@@ -109,6 +109,16 @@ const Home: NextPage = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
+      {/* Header */}
+      <div className="bg-[#1e293b] border-b border-slate-700">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex items-center space-x-2">
+            <FileText className="w-6 h-6 text-primary" />
+            <h1 className="text-xl font-bold text-white">AI Resume Tailor</h1>
+          </div>
+        </div>
+      </div>
+
       {/* Hero Section */}
       <div className="bg-[#1e293b] py-16">
         <div className="container mx-auto px-4">
@@ -134,7 +144,7 @@ const Home: NextPage = () => {
       {/* Auth Form Section */}
       <div className="container mx-auto px-4 py-16">
         {/* Auth Form */}
-        <div className="max-w-md mx-auto">
+        <div className="max-w-2xl mx-auto">
           <AuthForm />
         </div>
       </div>

@@ -17,6 +17,7 @@
     "@types/nodemailer": "^6.4.17",
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
+    "groq-sdk": "^0.29.0",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.535.0",
     "mongodb": "^6.18.0",

@@ -16,7 +16,6 @@ export default async function handler(
   }
 
   try {
-    // Get user from Authorization header
     const authHeader = req.headers.authorization
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ error: 'Missing authorization token' })
@@ -24,13 +23,7 @@ export default async function handler(
 
     const token = authHeader.replace('Bearer ', '')
     
-    // Verify the user with Supabase
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    )
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
     
     if (authError || !user) {
       return res.status(401).json({ error: 'Invalid token' })
@@ -42,7 +35,6 @@ export default async function handler(
       return res.status(400).json({ error: 'Missing resume content' })
     }
 
-    // Update or insert profile
     const { data, error } = await supabaseAdmin
       .from('profiles')
       .upsert({
@@ -60,7 +52,7 @@ export default async function handler(
 
     return res.status(200).json({ 
       success: true,
-      profile: data 
+      profile: data
     })
 
   } catch (error) {

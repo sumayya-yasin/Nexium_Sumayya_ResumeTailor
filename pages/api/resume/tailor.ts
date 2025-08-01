@@ -1,17 +1,14 @@
 
 import { NextApiRequest, NextApiResponse } from 'next'
 import { createClient } from '@supabase/supabase-js'
-import OpenAI from 'openai'
 import { connectToDatabase } from '@/lib/mongodb'
+import { tailorResumeWithAI, JobDescription } from '@/lib/ai'
+import { ObjectId } from 'mongodb'
 
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
 
 export default async function handler(
   req: NextApiRequest,
@@ -22,67 +19,84 @@ export default async function handler(
   }
 
   try {
-    const { userId, jobDescription } = req.body
+    // Get user from Authorization header
+    const authHeader = req.headers.authorization
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'Missing authorization token' })
+    }
 
-    if (!userId || !jobDescription) {
+    const token = authHeader.replace('Bearer ', '')
+    
+    // Verify the user with Supabase
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
+    
+    if (authError || !user) {
+      return res.status(401).json({ error: 'Invalid token' })
+    }
+
+    const { resumeContent, jobDescriptionId, originalResumeId } = req.body
+
+    if (!resumeContent || !jobDescriptionId) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
-    // Get user's resume from Supabase
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('resume_content')
-      .eq('user_id', userId)
-      .single()
+    const { db } = await connectToDatabase()
 
-    if (profileError || !profile?.resume_content) {
-      return res.status(404).json({ error: 'Resume not found' })
+    // Get job description
+    const jobDescriptionDoc = await db.collection('job_descriptions')
+      .findOne({ _id: new ObjectId(jobDescriptionId) })
+
+    if (!jobDescriptionDoc) {
+      return res.status(404).json({ error: 'Job description not found' })
     }
 
-    // Use OpenAI to tailor the resume
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: "You are a professional resume writer. Tailor the given resume to match the job description while keeping it truthful and professional."
-        },
-        {
-          role: "user",
-          content: `Job Description: ${jobDescription}\n\nOriginal Resume: ${profile.resume_content}\n\nPlease tailor this resume to better match the job description.`
-        }
-      ],
-      max_tokens: 2000
-    })
-
-    const tailoredResume = completion.choices[0]?.message?.content
-
-    if (!tailoredResume) {
-      return res.status(500).json({ error: 'Failed to generate tailored resume' })
+    // Convert to JobDescription type
+    const jobDescription = {
+      title: jobDescriptionDoc.title,
+      company: jobDescriptionDoc.company,
+      description: jobDescriptionDoc.description,
+      requirements: jobDescriptionDoc.requirements || [],
+      keywords: jobDescriptionDoc.keywords || []
     }
 
-    // Save to MongoDB for history
-    try {
-      const { db } = await connectToDatabase()
-      await db.collection('tailored_resumes').insertOne({
-        userId,
-        jobDescription,
-        originalResume: profile.resume_content,
-        tailoredResume,
-        createdAt: new Date()
-      })
-    } catch (mongoError) {
-      console.error('MongoDB save error:', mongoError)
-      // Continue even if MongoDB save fails
+    // Tailor resume with AI
+    const startTime = Date.now()
+    console.log('Starting AI tailoring with job description:', jobDescription.title)
+    console.log('Resume content keys:', Object.keys(resumeContent))
+    console.log('Resume has rawText:', !!resumeContent.rawText)
+    
+    const aiResult = await tailorResumeWithAI(resumeContent, jobDescription)
+    const processingTime = Date.now() - startTime
+    console.log('AI tailoring completed in', processingTime, 'ms with score:', aiResult.score)
+
+    // Save tailored resume
+    const tailoredResume = {
+      userId: user.id,
+      jobDescriptionId: jobDescriptionId,
+      originalResumeId: originalResumeId,
+      tailoredContent: aiResult.tailoredResume,
+      aiMetadata: {
+        confidence: aiResult.score || 75,
+        processingTime: processingTime,
+        keywordMatches: aiResult.keywordMatches || [],
+        suggestions: aiResult.suggestions || []
+      },
+      createdAt: new Date()
     }
+
+    const result = await db.collection('tailored_resumes').insertOne(tailoredResume)
 
     return res.status(200).json({
       success: true,
-      tailoredResume
+      data: {
+        ...aiResult,
+        _id: result.insertedId,
+        processingTime
+      }
     })
 
   } catch (error) {
-    console.error('Error in resume tailor:', error)
+    console.error('Error tailoring resume:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 }

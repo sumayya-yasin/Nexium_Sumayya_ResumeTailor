@@ -1,20 +1,18 @@
 import { MongoClient, Db } from 'mongodb'
 
-const uri = process.env.MONGODB_URI
-
-if (!uri) {
+if (!process.env.MONGODB_URI) {
   throw new Error('Please add your MongoDB URI to .env.local')
 }
+
+const uri: string = process.env.MONGODB_URI
+const options = {}
 
 let client: MongoClient
 let clientPromise: Promise<MongoClient>
 
-const options = {
-  serverSelectionTimeoutMS: 5000, 
-  socketTimeoutMS: 45000, 
-}
-
 if (process.env.NODE_ENV === 'development') {
+  // In development mode, use a global variable so that the value
+  // is preserved across module reloads caused by HMR (Hot Module Replacement).
   let globalWithMongo = global as typeof globalThis & {
     _mongoClientPromise?: Promise<MongoClient>
   }
@@ -30,21 +28,23 @@ if (process.env.NODE_ENV === 'development') {
   clientPromise = client.connect()
 }
 
-export default clientPromise
-
 export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
   try {
     const client = await clientPromise
-    const db = client.db('resume_tailor')
+    const db = client.db('resume-tailor')
     return { client, db }
   } catch (error) {
-    console.error('MongoDB connection error:', error)
-    throw new Error(`Failed to connect to MongoDB: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    console.error('Failed to connect to MongoDB:', error)
+    throw new Error('Database connection failed')
   }
 }
 
+export default clientPromise
+
+// Job Description Schema
 import mongoose from 'mongoose'
 
+// Job Description Schema
 export const JobDescriptionSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   title: { type: String, required: true },
