@@ -1,157 +1,64 @@
-
 import OpenAI from 'openai'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
-export interface ResumeContent {
-  personalInfo: {
-    name: string
-    email: string
-    phone?: string
-    location?: string
-    linkedin?: string
-    website?: string
-  }
-  summary: string
-  skills: string[]
-  experience: Array<{
-    company: string
-    position: string
-    duration: string
-    achievements: string[]
-  }>
-  education: Array<{
-    institution: string
-    degree: string
-    year: string
-    gpa?: string
-  }>
-  projects?: Array<{
-    name: string
-    description: string
-    technologies: string[]
-    link?: string
-  }>
-}
-
-export interface JobDescription {
-  title: string
-  company: string
-  description: string
-  requirements: string[]
-  keywords: string[]
-}
-
-export async function tailorResumeToJob(
-  resume: ResumeContent,
-  jobDescription: JobDescription
-): Promise<{
-  tailoredResume: ResumeContent
-  suggestions: string[]
-  keywordMatches: string[]
-  score: number
-}> {
+export async function tailorResume(resumeContent: string, jobDescription: string): Promise<string> {
   try {
-    const prompt = `
-You are an expert resume optimization AI. Your task is to tailor a resume to match a specific job description while maintaining authenticity and accuracy.
-
-Original Resume:
-${JSON.stringify(resume, null, 2)}
-
-Job Description:
-Title: ${jobDescription.title}
-Company: ${jobDescription.company}
-Description: ${jobDescription.description}
-Requirements: ${jobDescription.requirements.join(', ')}
-Keywords: ${jobDescription.keywords.join(', ')}
-
-Instructions:
-1. Optimize the resume summary to align with the job requirements
-2. Reorder and emphasize relevant skills based on job keywords
-3. Enhance experience descriptions using action verbs and quantifiable achievements
-4. Highlight relevant projects and education
-5. Ensure keyword optimization without keyword stuffing
-6. Maintain truthfulness - DO NOT add false information
-
-Return a JSON response with:
-- tailoredResume: The optimized resume content
-- suggestions: Array of improvement suggestions
-- keywordMatches: Array of matched keywords from the job description
-- score: Overall match score (0-100)
-`
-
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "You are an expert resume optimization assistant. Always return valid JSON responses."
+          content: "You are a professional resume writer. Tailor the given resume to match the job description while keeping it truthful and professional. Maintain the original structure but optimize keywords and emphasize relevant experience."
         },
         {
           role: "user",
-          content: prompt
+          content: `Job Description:\n${jobDescription}\n\nOriginal Resume:\n${resumeContent}\n\nPlease tailor this resume to better match the job description.`
         }
       ],
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+      max_tokens: 2000,
+      temperature: 0.7
     })
 
-    const result = JSON.parse(completion.choices[0].message.content || '{}')
-    return result
+    return completion.choices[0]?.message?.content || resumeContent
   } catch (error) {
-    console.error('AI resume tailoring error:', error)
+    console.error('OpenAI API error:', error)
     throw new Error('Failed to tailor resume with AI')
   }
 }
 
-export async function generateResumeFeedback(
-  resume: ResumeContent
-): Promise<{
-  feedback: string
-  suggestions: string[]
-  score: number
-}> {
+export async function generateJobSuggestions(resumeContent: string): Promise<string[]> {
   try {
-    const prompt = `
-Analyze this resume and provide constructive feedback:
-
-${JSON.stringify(resume, null, 2)}
-
-Provide feedback on:
-1. Overall structure and formatting
-2. Content quality and impact
-3. Keyword optimization
-4. Achievement quantification
-5. Areas for improvement
-
-Return JSON with:
-- feedback: Overall assessment (string)
-- suggestions: Array of specific improvement suggestions
-- score: Overall resume quality score (0-100)
-`
-
     const completion = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "You are an expert resume reviewer. Always return valid JSON responses."
+          content: "You are a career advisor. Based on the resume provided, suggest 5 job titles that would be a good fit. Return only a JSON array of job titles as strings."
         },
         {
           role: "user",
-          content: prompt
+          content: `Resume:\n${resumeContent}\n\nSuggest job titles:`
         }
       ],
-      temperature: 0.3,
-      response_format: { type: "json_object" }
+      max_tokens: 200,
+      temperature: 0.5
     })
 
-    const result = JSON.parse(completion.choices[0].message.content || '{}')
-    return result
+    const response = completion.choices[0]?.message?.content
+    if (response) {
+      try {
+        return JSON.parse(response)
+      } catch {
+        // If JSON parsing fails, return a default array
+        return []
+      }
+    }
+    return []
   } catch (error) {
-    console.error('AI feedback generation error:', error)
-    throw new Error('Failed to generate resume feedback')
+    console.error('OpenAI API error:', error)
+    return []
   }
 }

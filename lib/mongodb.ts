@@ -1,36 +1,50 @@
+import { MongoClient, Db } from 'mongodb'
+
+const uri = process.env.MONGODB_URI
+
+if (!uri) {
+  throw new Error('Please add your MongoDB URI to .env.local')
+}
+
+let client: MongoClient
+let clientPromise: Promise<MongoClient>
+
+const options = {
+  serverSelectionTimeoutMS: 5000, 
+  socketTimeoutMS: 45000, 
+}
+
+if (process.env.NODE_ENV === 'development') {
+  let globalWithMongo = global as typeof globalThis & {
+    _mongoClientPromise?: Promise<MongoClient>
+  }
+
+  if (!globalWithMongo._mongoClientPromise) {
+    client = new MongoClient(uri, options)
+    globalWithMongo._mongoClientPromise = client.connect()
+  }
+  clientPromise = globalWithMongo._mongoClientPromise
+} else {
+  // In production mode, it's best to not use a global variable.
+  client = new MongoClient(uri, options)
+  clientPromise = client.connect()
+}
+
+export default clientPromise
+
+export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db }> {
+  try {
+    const client = await clientPromise
+    const db = client.db('resume_tailor')
+    return { client, db }
+  } catch (error) {
+    console.error('MongoDB connection error:', error)
+    throw new Error(`Failed to connect to MongoDB: ${error instanceof Error ? error.message : 'Unknown error'}`)
+  }
+}
 
 import mongoose from 'mongoose'
 
-if (!process.env.MONGODB_URI) {
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')
-}
-
-const uri = process.env.MONGODB_URI
-const options = {}
-
-let cached = (global as any).mongoose
-
-if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null }
-}
-
-async function connectDB() {
-  if (cached.conn) {
-    return cached.conn
-  }
-
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(uri, options).then((mongoose) => {
-      return mongoose
-    })
-  }
-  cached.conn = await cached.promise
-  return cached.conn
-}
-
-export default connectDB
-
-// Job Description Schema
 export const JobDescriptionSchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   title: { type: String, required: true },

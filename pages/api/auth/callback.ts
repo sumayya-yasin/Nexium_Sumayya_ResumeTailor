@@ -1,7 +1,6 @@
 
 import { NextApiRequest, NextApiResponse } from 'next'
 import { supabase } from '@/lib/supabase'
-import { notifyUserSignup } from '@/lib/n8n'
 
 export default async function handler(
   req: NextApiRequest,
@@ -34,8 +33,7 @@ export default async function handler(
             full_name: user.user_metadata?.full_name || null,
           })
 
-        // Trigger n8n workflow for new user signup
-        await notifyUserSignup(user.id, user.email)
+        console.log(`New user signed up: ${user.id} - ${user.email}`)
       }
     }
 

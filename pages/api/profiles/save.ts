@@ -1,9 +1,8 @@
 
 import { NextApiRequest, NextApiResponse } from 'next'
 import { createClient } from '@supabase/supabase-js'
-import { connectToDatabase } from '@/lib/mongodb'
 
-const supabase = createClient(
+const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
@@ -26,47 +25,46 @@ export default async function handler(
     const token = authHeader.replace('Bearer ', '')
     
     // Verify the user with Supabase
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
     const { data: { user }, error: authError } = await supabase.auth.getUser(token)
     
     if (authError || !user) {
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    const { title, company, description, requirements, keywords } = req.body
+    const { resume_content } = req.body
 
-    if (!title || !company || !description) {
-      return res.status(400).json({ error: 'Missing required fields' })
+    if (!resume_content) {
+      return res.status(400).json({ error: 'Missing resume content' })
     }
 
-    const { db } = await connectToDatabase()
+    // Update or insert profile
+    const { data, error } = await supabaseAdmin
+      .from('profiles')
+      .upsert({
+        user_id: user.id,
+        resume_content: resume_content,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
 
-    const result = await db.collection('jobs').insertOne({
-      userId: user.id,
-      title,
-      company,
-      description,
-      requirements: requirements || [],
-      keywords: keywords || [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    })
+    if (error) {
+      console.error('Profile save error:', error)
+      return res.status(500).json({ error: 'Failed to save profile' })
+    }
 
-    return res.status(201).json({
+    return res.status(200).json({ 
       success: true,
-      data: {
-        _id: result.insertedId,
-        userId: user.id,
-        title,
-        company,
-        description,
-        requirements,
-        keywords,
-        createdAt: new Date()
-      }
+      profile: data 
     })
 
   } catch (error) {
-    console.error('Error creating job:', error)
+    console.error('Error in profile save:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 }

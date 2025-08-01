@@ -1,4 +1,3 @@
-
 import type { NextPage } from "next";
 import Head from "next/head";
 import { useEffect, useState } from "react";
@@ -7,7 +6,8 @@ import { User } from "@supabase/supabase-js";
 import AuthForm from "@/components/auth/AuthForm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Brain, FileText, Zap, Target, Shield, Workflow } from "lucide-react";
+import { Zap, FileText } from "lucide-react";
+
 
 const Home: NextPage = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -15,7 +15,6 @@ const Home: NextPage = () => {
 
   useEffect(() => {
     const handleAuth = async () => {
-      // Check if there's a hash in the URL (from magic link)
       if (window.location.hash) {
         const { data, error } = await supabase.auth.getSession()
         if (data.session && !error) {
@@ -59,31 +58,40 @@ const Home: NextPage = () => {
 
   if (user) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-[#0f172a]">
         <Head>
           <title>Resume Tailor - AI-Powered Resume Optimization</title>
           <meta name="description" content="Tailor your resume to any job description with AI" />
           <link rel="icon" href="/favicon.ico" />
         </Head>
 
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Welcome back, {user.email}!
-            </h1>
-            <Button onClick={handleSignOut} variant="outline">
-              Sign Out
-            </Button>
+        {/* Header */}
+        <div className="bg-[#1e293b] border-b border-slate-700">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex justify-between items-center">
+              <div className="flex items-center space-x-2">
+                <FileText className="w-6 h-6 text-primary" />
+                <h1 className="text-xl font-bold text-white">AI Resume Tailor</h1>
+              </div>
+              <Button onClick={handleSignOut} variant="outline" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+                Sign Out
+              </Button>
+            </div>
           </div>
+        </div>
 
+        <div className="container mx-auto px-4 py-8">
           <div className="text-center mb-12">
-            <p className="text-xl text-gray-600 mb-4">
+            <h2 className="text-3xl font-bold text-white mb-4">
+              Welcome back, {user.email}!
+            </h2>
+            <p className="text-xl text-slate-300 mb-8">
               Ready to optimize your resume with AI?
             </p>
             <Button 
               onClick={() => window.location.href = '/dashboard'}
               size="lg"
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary hover:bg-primary/90"
             >
               Go to Dashboard
             </Button>
@@ -94,7 +102,7 @@ const Home: NextPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-[#0f172a]">
       <Head>
         <title>Resume Tailor - AI-Powered Resume Optimization</title>
         <meta name="description" content="Tailor your resume to any job description with AI" />
@@ -102,87 +110,29 @@ const Home: NextPage = () => {
       </Head>
 
       {/* Hero Section */}
-      <div className="container mx-auto px-4 py-16">
-        <div className="text-center mb-16">
-          <div className="inline-flex items-center bg-blue-100 text-blue-800 text-sm font-medium px-4 py-2 rounded-full mb-6">
-            <Zap className="w-4 h-4 mr-2" />
-            AI-Powered Resume Optimization
+      <div className="bg-[#1e293b] py-16">
+        <div className="container mx-auto px-4">
+          <div className="text-center mb-16">
+            <div className="inline-flex items-center bg-primary/20 text-primary text-sm font-medium px-4 py-2 rounded-full mb-6 border border-primary/30">
+              <Zap className="w-4 h-4 mr-2" />
+              AI-Powered Resume Optimization
+            </div>
+            <h1 className="text-5xl font-bold text-white mb-6 tracking-tight">
+              Tailor Your Resume to{" "}
+              <span className="text-primary">
+                Any Job Description
+              </span>
+            </h1>
+            <p className="text-xl text-slate-300 mb-8 max-w-3xl mx-auto leading-relaxed">
+              Our AI analyzes job descriptions and intelligently optimizes your resume content,
+              keywords, and formatting to maximize your chances of landing interviews.
+            </p>
           </div>
-          <h1 className="text-5xl font-bold text-gray-900 mb-6">
-            Tailor Your Resume to{" "}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600">
-              Any Job Description
-            </span>
-          </h1>
-          <p className="text-xl text-gray-600 mb-8 max-w-3xl mx-auto">
-            Our AI analyzes job descriptions and intelligently optimizes your resume content,
-            keywords, and formatting to maximize your chances of landing interviews.
-          </p>
         </div>
+      </div>
 
-        {/* Features Grid */}
-        <div className="grid md:grid-cols-3 gap-8 mb-16">
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <Brain className="w-12 h-12 text-blue-600 mx-auto mb-4" />
-              <CardTitle>AI Content Analysis</CardTitle>
-              <CardDescription>
-                Advanced AI analyzes job requirements and optimizes your resume content
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <Target className="w-12 h-12 text-green-600 mx-auto mb-4" />
-              <CardTitle>Keyword Optimization</CardTitle>
-              <CardDescription>
-                Automatically match and highlight relevant keywords from job descriptions
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <FileText className="w-12 h-12 text-purple-600 mx-auto mb-4" />
-              <CardTitle>Multiple Formats</CardTitle>
-              <CardDescription>
-                Download optimized resumes in PDF format or copy to clipboard
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <Shield className="w-12 h-12 text-red-600 mx-auto mb-4" />
-              <CardTitle>Secure & Private</CardTitle>
-              <CardDescription>
-                Your data is encrypted and stored securely with Supabase
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <Workflow className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-              <CardTitle>Smart Automation</CardTitle>
-              <CardDescription>
-                Automated workflows with n8n for notifications and processing
-              </CardDescription>
-            </CardHeader>
-          </Card>
-
-          <Card className="text-center hover:shadow-lg transition-shadow">
-            <CardHeader>
-              <Zap className="w-12 h-12 text-yellow-600 mx-auto mb-4" />
-              <CardTitle>Real-time Feedback</CardTitle>
-              <CardDescription>
-                Get instant AI feedback and suggestions for improvement
-              </CardDescription>
-            </CardHeader>
-          </Card>
-        </div>
-
+      {/* Auth Form Section */}
+      <div className="container mx-auto px-4 py-16">
         {/* Auth Form */}
         <div className="max-w-md mx-auto">
           <AuthForm />

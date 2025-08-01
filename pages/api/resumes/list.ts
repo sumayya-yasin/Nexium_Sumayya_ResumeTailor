@@ -12,7 +12,7 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== 'POST') {
+  if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
@@ -32,41 +32,21 @@ export default async function handler(
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    const { title, company, description, requirements, keywords } = req.body
-
-    if (!title || !company || !description) {
-      return res.status(400).json({ error: 'Missing required fields' })
-    }
-
     const { db } = await connectToDatabase()
 
-    const result = await db.collection('jobs').insertOne({
-      userId: user.id,
-      title,
-      company,
-      description,
-      requirements: requirements || [],
-      keywords: keywords || [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    })
+    const resumes = await db.collection('tailored_resumes')
+      .find({ userId: user.id })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .toArray()
 
-    return res.status(201).json({
+    return res.status(200).json({
       success: true,
-      data: {
-        _id: result.insertedId,
-        userId: user.id,
-        title,
-        company,
-        description,
-        requirements,
-        keywords,
-        createdAt: new Date()
-      }
+      data: resumes
     })
 
   } catch (error) {
-    console.error('Error creating job:', error)
+    console.error('Error fetching resumes:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 }

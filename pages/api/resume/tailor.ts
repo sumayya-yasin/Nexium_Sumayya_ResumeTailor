@@ -1,9 +1,17 @@
 
 import { NextApiRequest, NextApiResponse } from 'next'
-import { supabase } from '@/lib/supabase'
-import connectDB, { JobDescription, AIResume } from '@/lib/mongodb'
-import { tailorResumeToJob, ResumeContent } from '@/lib/ai'
-import { notifyResumeTailored } from '@/lib/n8n'
+import { createClient } from '@supabase/supabase-js'
+import OpenAI from 'openai'
+import { connectToDatabase } from '@/lib/mongodb'
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+})
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,77 +22,67 @@ export default async function handler(
   }
 
   try {
-    // Verify authentication
-    const token = req.headers.authorization?.replace('Bearer ', '')
-    if (!token) {
-      return res.status(401).json({ error: 'No token provided' })
-    }
+    const { userId, jobDescription } = req.body
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    if (authError || !user) {
-      return res.status(401).json({ error: 'Invalid token' })
-    }
-
-    const { resumeContent, jobDescriptionId } = req.body
-
-    if (!resumeContent || !jobDescriptionId) {
+    if (!userId || !jobDescription) {
       return res.status(400).json({ error: 'Missing required fields' })
     }
 
-    // Connect to MongoDB
-    await connectDB()
+    // Get user's resume from Supabase
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('resume_content')
+      .eq('user_id', userId)
+      .single()
 
-    // Get job description from MongoDB
-    const jobDescription = await JobDescription.findById(jobDescriptionId)
-    if (!jobDescription) {
-      return res.status(404).json({ error: 'Job description not found' })
+    if (profileError || !profile?.resume_content) {
+      return res.status(404).json({ error: 'Resume not found' })
     }
 
-    // Tailor resume using AI
-    const aiResult = await tailorResumeToJob(resumeContent, {
-      title: jobDescription.title,
-      company: jobDescription.company,
-      description: jobDescription.description,
-      requirements: jobDescription.requirements,
-      keywords: jobDescription.keywords,
+    // Use OpenAI to tailor the resume
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
+          role: "system",
+          content: "You are a professional resume writer. Tailor the given resume to match the job description while keeping it truthful and professional."
+        },
+        {
+          role: "user",
+          content: `Job Description: ${jobDescription}\n\nOriginal Resume: ${profile.resume_content}\n\nPlease tailor this resume to better match the job description.`
+        }
+      ],
+      max_tokens: 2000
     })
 
-    // Save tailored resume to MongoDB
-    const aiResume = new AIResume({
-      userId: user.id,
-      jobDescriptionId: jobDescriptionId,
-      originalResumeId: req.body.originalResumeId || 'temp',
-      tailoredContent: aiResult.tailoredResume,
-      aiMetadata: {
-        model: 'gpt-4-turbo-preview',
-        promptVersion: '1.0',
-        processingTime: Date.now(),
-        confidence: aiResult.score,
-      },
-    })
+    const tailoredResume = completion.choices[0]?.message?.content
 
-    await aiResume.save()
+    if (!tailoredResume) {
+      return res.status(500).json({ error: 'Failed to generate tailored resume' })
+    }
 
-    // Trigger n8n workflow
-    await notifyResumeTailored(
-      user.id,
-      aiResume._id.toString(),
-      jobDescription.title,
-      aiResult.score
-    )
+    // Save to MongoDB for history
+    try {
+      const { db } = await connectToDatabase()
+      await db.collection('tailored_resumes').insertOne({
+        userId,
+        jobDescription,
+        originalResume: profile.resume_content,
+        tailoredResume,
+        createdAt: new Date()
+      })
+    } catch (mongoError) {
+      console.error('MongoDB save error:', mongoError)
+      // Continue even if MongoDB save fails
+    }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
-      data: {
-        id: aiResume._id,
-        tailoredResume: aiResult.tailoredResume,
-        suggestions: aiResult.suggestions,
-        keywordMatches: aiResult.keywordMatches,
-        score: aiResult.score,
-      },
+      tailoredResume
     })
+
   } catch (error) {
-    console.error('Resume tailoring error:', error)
-    res.status(500).json({ error: 'Failed to tailor resume' })
+    console.error('Error in resume tailor:', error)
+    return res.status(500).json({ error: 'Internal server error' })
   }
 }

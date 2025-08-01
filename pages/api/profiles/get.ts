@@ -1,7 +1,6 @@
 
 import { NextApiRequest, NextApiResponse } from 'next'
 import { createClient } from '@supabase/supabase-js'
-import { connectToDatabase } from '@/lib/mongodb'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,7 +11,7 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
-  if (req.method !== 'POST') {
+  if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
@@ -32,41 +31,25 @@ export default async function handler(
       return res.status(401).json({ error: 'Invalid token' })
     }
 
-    const { title, company, description, requirements, keywords } = req.body
+    // Get user profile
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', user.id)
+      .single()
 
-    if (!title || !company || !description) {
-      return res.status(400).json({ error: 'Missing required fields' })
+    if (error && error.code !== 'PGRST116') {
+      console.error('Profile fetch error:', error)
+      return res.status(500).json({ error: 'Failed to fetch profile' })
     }
 
-    const { db } = await connectToDatabase()
-
-    const result = await db.collection('jobs').insertOne({
-      userId: user.id,
-      title,
-      company,
-      description,
-      requirements: requirements || [],
-      keywords: keywords || [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    })
-
-    return res.status(201).json({
+    return res.status(200).json({ 
       success: true,
-      data: {
-        _id: result.insertedId,
-        userId: user.id,
-        title,
-        company,
-        description,
-        requirements,
-        keywords,
-        createdAt: new Date()
-      }
+      profile: profile || null
     })
 
   } catch (error) {
-    console.error('Error creating job:', error)
+    console.error('Error in profile get:', error)
     return res.status(500).json({ error: 'Internal server error' })
   }
 }
