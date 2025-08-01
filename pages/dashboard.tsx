@@ -339,7 +339,7 @@ export default function Dashboard() {
   }
 
   const extractSkills = (text: string) => {
-    const skillsSection = text.match(/skills[:\n](.*?)(?=experience|education|$)/is)
+    const skillsSection = text.match(/skills[:\n](.*?)(?=experience|education|$)/i)
     return skillsSection?.[1]?.split(/[,\n]/).map(s => s.trim()).filter(Boolean) || []
   }
 
