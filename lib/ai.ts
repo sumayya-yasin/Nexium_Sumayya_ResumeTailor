@@ -99,14 +99,8 @@ Please tailor this resume to match the job requirements. Return a JSON response 
   "suggestions": ["suggestion1", "suggestion2"]
 }
 
-Focus on:
-1. Optimizing the summary for ATS and human readers
-2. Incorporating relevant keywords naturally
-3. Highlighting transferable skills
-4. Quantifying achievements where possible
-5. Ensuring the content matches the job requirements
-
-Return only valid JSON, no additional text.`
+Respond with **only valid JSON**. Do not include any explanation or text before or after the JSON.
+`
 
     console.log('Making Groq API request...')
     console.log('Prompt length:', prompt.length)
@@ -127,17 +121,25 @@ Return only valid JSON, no additional text.`
 
     let parsedResponse
     try {
-      // Try to parse the JSON response
-      parsedResponse = JSON.parse(content)
+      let jsonText = content.trim()
+
+      // Try to extract from ```json code block first
+      const codeBlockMatch = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+      if (codeBlockMatch) {
+        jsonText = codeBlockMatch[1]
+      } else {
+        // Fallback: extract from first curly brace
+        const jsonStart = jsonText.indexOf('{')
+        jsonText = jsonText.slice(jsonStart)
+      }
+
+      parsedResponse = JSON.parse(jsonText)
     } catch (parseError) {
       console.error('JSON parse error:', parseError)
       console.log('Raw response:', content)
-      
-      // If JSON parsing fails, use fallback
       return createFallbackResponse(resumeContent, jobDescription)
     }
 
-    // Validate the response structure
     if (!parsedResponse.tailoredResume) {
       console.warn('Invalid response structure, using fallback')
       return createFallbackResponse(resumeContent, jobDescription)
@@ -158,7 +160,6 @@ Return only valid JSON, no additional text.`
       stack: error instanceof Error ? error.stack : 'No stack trace'
     })
 
-    // Return fallback response on any error
     return createFallbackResponse(resumeContent, jobDescription)
   }
 }
@@ -178,11 +179,9 @@ function extractKeywords(jobDescription: string, resumeContent: ResumeContent): 
 
 function createFallbackResponse(resumeContent: ResumeContent, jobDescription: JobDescription): AITailoringResult {
   console.log('Creating fallback AI response')
-  
-  // Basic keyword matching
+
   const keywords = extractKeywords(jobDescription.description, resumeContent)
-  
-  // Create enhanced resume with job title
+
   const enhancedResume = {
     personalInfo: resumeContent.personalInfo || {
       name: "Your Name",
@@ -190,8 +189,8 @@ function createFallbackResponse(resumeContent: ResumeContent, jobDescription: Jo
       phone: "Phone Number",
       address: "Your Address"
     },
-    summary: resumeContent.summary ? 
-      `${resumeContent.summary} Seeking ${jobDescription.title} position at ${jobDescription.company} with expertise in ${keywords.slice(0, 3).join(', ')}.` : 
+    summary: resumeContent.summary ?
+      `${resumeContent.summary} Seeking ${jobDescription.title} position at ${jobDescription.company} with expertise in ${keywords.slice(0, 3).join(', ')}.` :
       `Experienced professional seeking ${jobDescription.title} position at ${jobDescription.company}. Strong background in ${keywords.slice(0, 3).join(', ')} with proven track record of success.`,
     experience: resumeContent.experience || [
       {
@@ -210,7 +209,7 @@ function createFallbackResponse(resumeContent: ResumeContent, jobDescription: Jo
     ],
     skills: resumeContent.skills || keywords.slice(0, 8)
   }
-  
+
   return {
     tailoredResume: enhancedResume,
     score: Math.min(keywords.length * 8 + 60, 95),
