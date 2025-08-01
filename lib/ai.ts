@@ -1,37 +1,25 @@
-
 import Groq from 'groq-sdk'
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY,
-})
-
 export interface ResumeContent {
-  personalInfo: {
-    name: string
-    email: string
-    phone: string
-    location: string
-    linkedin?: string
-    website?: string
+  personalInfo?: {
+    name?: string
+    email?: string
+    phone?: string
+    address?: string
   }
-  summary: string
-  skills: string[]
-  experience: Array<{
+  summary?: string
+  experience?: Array<{
     title: string
     company: string
     duration: string
     description: string
   }>
-  education: Array<{
+  education?: Array<{
     degree: string
     school: string
     year: string
   }>
-  projects: Array<{
-    name: string
-    description: string
-    technologies: string[]
-  }>
+  skills?: string[]
   rawText?: string
 }
 
@@ -39,8 +27,8 @@ export interface JobDescription {
   title: string
   company: string
   description: string
-  requirements: string[]
-  keywords: string[]
+  requirements?: string[]
+  keywords?: string[]
 }
 
 export interface AITailoringResult {
@@ -55,6 +43,7 @@ export async function tailorResumeWithAI(
   jobDescription: JobDescription
 ): Promise<AITailoringResult> {
   try {
+    console.log('Resume has rawText:', !!resumeContent.rawText)
     console.log('Groq API Key exists:', !!process.env.GROQ_API_KEY)
     console.log('Groq API Key length:', process.env.GROQ_API_KEY?.length || 0)
     
@@ -62,91 +51,103 @@ export async function tailorResumeWithAI(
       console.warn('Groq API key missing or invalid, using fallback')
       return createFallbackResponse(resumeContent, jobDescription)
     }
-    
+
+    const groq = new Groq({
+      apiKey: process.env.GROQ_API_KEY,
+    })
+
     const prompt = `
 You are an expert resume writer and ATS optimization specialist. 
 
-CURRENT RESUME:
-Name: ${resumeContent.personalInfo?.name || 'Not provided'}
-Summary: ${resumeContent.summary || 'Not provided'}
-Skills: ${resumeContent.skills?.join(', ') || 'Not provided'}
-Experience: ${resumeContent.experience?.map(exp => `${exp.title} at ${exp.company}`).join('; ') || 'Not provided'}
+Job Details:
+- Position: ${jobDescription.title}
+- Company: ${jobDescription.company}
+- Description: ${jobDescription.description}
 
-RAW TEXT:
-${resumeContent.rawText || 'No raw text provided'}
+Current Resume Content:
+${resumeContent.rawText || JSON.stringify(resumeContent, null, 2)}
 
-TARGET JOB:
-Title: ${jobDescription.title}
-Company: ${jobDescription.company}
-Description: ${jobDescription.description}
-Requirements: ${jobDescription.requirements?.join('; ') || 'Not specified'}
-
-TASK: Optimize this resume for the job posting. Return ONLY valid JSON with:
+Please tailor this resume to match the job requirements. Return a JSON response with this exact structure:
 {
   "tailoredResume": {
-    "personalInfo": {"name": "Current Name", "email": "email@example.com", "phone": "123-456-7890", "location": "Location"},
-    "summary": "Enhanced summary with job-relevant keywords",
-    "skills": ["skill1", "skill2", "skill3"],
-    "experience": [{"title": "Job Title", "company": "Company", "duration": "2020-2023", "description": "Enhanced description"}],
-    "education": [],
-    "projects": []
+    "personalInfo": {
+      "name": "Full Name",
+      "email": "email@example.com", 
+      "phone": "Phone Number",
+      "address": "Address"
+    },
+    "summary": "Enhanced professional summary that highlights relevant experience for ${jobDescription.title} at ${jobDescription.company}. Include keywords from the job description and emphasize matching skills and achievements.",
+    "experience": [
+      {
+        "title": "Job Title",
+        "company": "Company Name", 
+        "duration": "Duration",
+        "description": "Enhanced description with job-relevant keywords and achievements"
+      }
+    ],
+    "education": [
+      {
+        "degree": "Degree Name",
+        "school": "School Name",
+        "year": "Year"
+      }
+    ],
+    "skills": ["skill1", "skill2", "skill3"]
   },
   "score": 85,
-  "keywordMatches": ["keyword1", "keyword2", "keyword3"],
-  "suggestions": ["suggestion1", "suggestion2", "suggestion3"]
+  "keywordMatches": ["keyword1", "keyword2"],
+  "suggestions": ["suggestion1", "suggestion2"]
 }
 
-Focus on incorporating job keywords naturally and highlighting relevant experience.`
+Focus on:
+1. Optimizing the summary for ATS and human readers
+2. Incorporating relevant keywords naturally
+3. Highlighting transferable skills
+4. Quantifying achievements where possible
+5. Ensuring the content matches the job requirements
+
+Return only valid JSON, no additional text.`
 
     console.log('Making Groq API request...')
     console.log('Prompt length:', prompt.length)
-    
+
     const response = await groq.chat.completions.create({
       model: 'llama3-8b-8192',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.7,
       max_tokens: 2000,
     })
-    
-    console.log('Groq response received, choices:', response.choices?.length)
 
     const content = response.choices[0]?.message?.content
+    console.log('Groq response received, length:', content?.length || 0)
+
     if (!content) {
-      throw new Error('No response from AI')
+      throw new Error('No content received from Groq')
     }
 
+    let parsedResponse
     try {
-      console.log('Raw AI response:', content.substring(0, 500) + '...')
-      
-      // Try to clean the response if it has extra text
-      let cleanContent = content.trim()
-      const jsonStart = cleanContent.indexOf('{')
-      const jsonEnd = cleanContent.lastIndexOf('}') + 1
-      
-      if (jsonStart >= 0 && jsonEnd > jsonStart) {
-        cleanContent = cleanContent.substring(jsonStart, jsonEnd)
-      }
-      
-      const aiResult = JSON.parse(cleanContent)
-      console.log('Parsed AI result keys:', Object.keys(aiResult))
-      
-      // Validate and set defaults
-      return {
-        tailoredResume: aiResult.tailoredResume || resumeContent,
-        score: Math.min(Math.max(aiResult.score || 75, 0), 100),
-        keywordMatches: Array.isArray(aiResult.keywordMatches) ? aiResult.keywordMatches : [],
-        suggestions: Array.isArray(aiResult.suggestions) ? aiResult.suggestions : ['Review and customize further based on specific job requirements']
-      }
+      // Try to parse the JSON response
+      parsedResponse = JSON.parse(content)
     } catch (parseError) {
-      console.error('Failed to parse AI response:', parseError)
-      console.error('Content that failed to parse:', content)
-      // Return a fallback response
-      return {
-        tailoredResume: resumeContent,
-        score: 70,
-        keywordMatches: extractKeywords(jobDescription.description, resumeContent),
-        suggestions: ['AI parsing failed - manual review recommended', 'Ensure keywords from job description are included', 'Customize summary for this specific role']
-      }
+      console.error('JSON parse error:', parseError)
+      console.log('Raw response:', content)
+      
+      // If JSON parsing fails, use fallback
+      return createFallbackResponse(resumeContent, jobDescription)
+    }
+
+    // Validate the response structure
+    if (!parsedResponse.tailoredResume) {
+      console.warn('Invalid response structure, using fallback')
+      return createFallbackResponse(resumeContent, jobDescription)
+    }
+
+    return {
+      tailoredResume: parsedResponse.tailoredResume,
+      score: parsedResponse.score || 75,
+      keywordMatches: parsedResponse.keywordMatches || [],
+      suggestions: parsedResponse.suggestions || []
     }
 
   } catch (error) {
@@ -156,21 +157,19 @@ Focus on incorporating job keywords naturally and highlighting relevant experien
       name: error instanceof Error ? error.name : 'Unknown',
       stack: error instanceof Error ? error.stack : 'No stack trace'
     })
-    
-    // Return a fallback response instead of throwing
-    return {
-      tailoredResume: resumeContent,
-      score: 65,
-      keywordMatches: extractKeywords(jobDescription.description, resumeContent),
-      suggestions: ['AI service unavailable - manual tailoring recommended', 'Match keywords from job description', 'Customize experience bullets for relevance']
-    }
+
+    // Return fallback response on any error
+    return createFallbackResponse(resumeContent, jobDescription)
   }
 }
 
 function extractKeywords(jobDescription: string, resumeContent: ResumeContent): string[] {
-  const jobWords = jobDescription.toLowerCase().match(/\b\w{3,}\b/g) || []
+  const jobWords = jobDescription.toLowerCase()
+    .split(/\W+/)
+    .filter(word => word.length > 3)
+
   const resumeText = (resumeContent.rawText || JSON.stringify(resumeContent)).toLowerCase()
-  
+
   return jobWords
     .filter(word => resumeText.includes(word))
     .filter((word, index, self) => self.indexOf(word) === index)
@@ -185,10 +184,31 @@ function createFallbackResponse(resumeContent: ResumeContent, jobDescription: Jo
   
   // Create enhanced resume with job title
   const enhancedResume = {
-    ...resumeContent,
+    personalInfo: resumeContent.personalInfo || {
+      name: "Your Name",
+      email: "email@example.com",
+      phone: "Phone Number",
+      address: "Your Address"
+    },
     summary: resumeContent.summary ? 
-      `${resumeContent.summary} Seeking ${jobDescription.title} position at ${jobDescription.company}.` : 
-      `Experienced professional seeking ${jobDescription.title} position at ${jobDescription.company}.`
+      `${resumeContent.summary} Seeking ${jobDescription.title} position at ${jobDescription.company} with expertise in ${keywords.slice(0, 3).join(', ')}.` : 
+      `Experienced professional seeking ${jobDescription.title} position at ${jobDescription.company}. Strong background in ${keywords.slice(0, 3).join(', ')} with proven track record of success.`,
+    experience: resumeContent.experience || [
+      {
+        title: "Previous Role",
+        company: "Previous Company",
+        duration: "Date Range",
+        description: `Relevant experience applicable to ${jobDescription.title} role. Demonstrated expertise in ${keywords.slice(0, 2).join(' and ')}.`
+      }
+    ],
+    education: resumeContent.education || [
+      {
+        degree: "Relevant Degree",
+        school: "University/Institution",
+        year: "Year"
+      }
+    ],
+    skills: resumeContent.skills || keywords.slice(0, 8)
   }
   
   return {
@@ -198,7 +218,9 @@ function createFallbackResponse(resumeContent: ResumeContent, jobDescription: Jo
     suggestions: [
       `Customize summary for ${jobDescription.title} role`,
       `Add keywords: ${keywords.slice(0, 3).join(', ')}`,
-      `Highlight relevant experience for ${jobDescription.company}`
+      `Highlight relevant experience for ${jobDescription.company}`,
+      `Quantify achievements with specific metrics`,
+      `Include industry-specific terminology`
     ]
   }
 }
