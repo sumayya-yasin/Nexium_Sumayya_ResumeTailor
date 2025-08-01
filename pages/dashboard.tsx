@@ -326,7 +326,7 @@ export default function Dashboard() {
   }
 
   const extractSummary = (text: string) => {
-    const summarySection = text.match(/summary[:\n](.*?)(?=experience|education|skills|$)/is)
+  const summarySection = text.match(/summary[:\n]([\s\S]*?)(?=experience|education|skills|$)/i)
     return summarySection?.[1]?.trim() || ''
   }
 
