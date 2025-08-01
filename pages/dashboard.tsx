@@ -1,351 +1,290 @@
-
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { supabase } from '@/lib/supabase'
 import { User } from '@supabase/supabase-js'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { FileText, Upload, Download, Zap, Plus, Trash2 } from 'lucide-react'
+import { FileText, Plus, Download, Clock, Star, Bot, Save, Upload, Briefcase } from 'lucide-react'
+import { ResumeContent } from '@/lib/ai'
 
-interface ResumeContent {
-  personalInfo?: {
-    name?: string
-    email?: string
-    phone?: string
-    address?: string
-  }
-  summary?: string
-  experience?: Array<{
-    title: string
-    company: string
-    duration: string
-    description: string
-  }>
-  education?: Array<{
-    degree: string
-    school: string
-    year: string
-  }>
-  skills?: string[]
-  rawText?: string
-}
-
-interface JobDescription {
-  _id?: string
-  title: string
-  company: string
-  description: string
-  requirements?: string[]
-  keywords?: string[]
-}
-
-interface TailoredResume {
+interface SavedResume {
   _id: string
+  jobDescriptionId: string
   tailoredContent: ResumeContent
-  score: number
-  keywordMatches: string[]
-  suggestions: string[]
-  processingTime: number
+  aiMetadata: {
+    confidence: number
+    processingTime: number
+  }
+  createdAt: string
+}
+
+interface UserProfile {
+  id: string
+  user_id: string
+  resume_content: ResumeContent | null
+  created_at: string
+  updated_at: string
 }
 
 export default function Dashboard() {
   const [user, setUser] = useState<User | null>(null)
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [resumeContent, setResumeContent] = useState<ResumeContent | null>(null)
-  const [jobDescriptions, setJobDescriptions] = useState<JobDescription[]>([])
-  const [tailoredResumes, setTailoredResumes] = useState<TailoredResume[]>([])
-  const [newJob, setNewJob] = useState({ title: '', company: '', description: '' })
-  const [selectedJobId, setSelectedJobId] = useState<string>('')
-  const [isProcessing, setIsProcessing] = useState(false)
-  const [currentTailoredResume, setCurrentTailoredResume] = useState<TailoredResume | null>(null)
+  const [savedResumes, setSavedResumes] = useState<SavedResume[]>([])
+  const [loadingResumes, setLoadingResumes] = useState(false)
+  const [processingAI, setProcessingAI] = useState(false)
+  const [aiResponse, setAiResponse] = useState<any>(null)
+
+  // Form states
+  const [jobTitle, setJobTitle] = useState('')
+  const [company, setCompany] = useState('')
+  const [jobDescription, setJobDescription] = useState('')
+  const [resumeContent, setResumeContent] = useState<ResumeContent & { rawText?: string }>({
+    personalInfo: {
+      name: '',
+      email: '',
+      phone: '',
+      location: '',
+      linkedin: '',
+      website: ''
+    },
+    summary: '',
+    skills: [],
+    experience: [],
+    education: [],
+    projects: [],
+    rawText: ''
+  })
+
   const router = useRouter()
 
   useEffect(() => {
-    checkUser()
-  }, [])
-
-  const checkUser = async () => {
-    try {
+    const getUser = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      
-      if (!session) {
+
+      if (session?.user) {
+        setUser(session.user)
+        await fetchUserProfile(session.user.id)
+        fetchSavedResumes(session.access_token)
+      } else {
         router.push('/')
+      }
+      setLoading(false)
+    }
+
+    getUser()
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        router.push('/')
+      } else if (session?.user) {
+        setUser(session.user)
+        fetchUserProfile(session.user.id)
+        fetchSavedResumes(session.access_token)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [router])
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      const session = await supabase.auth.getSession()
+      if (!session.data.session) return
+
+      const token = session.data.session.access_token
+      if (!token) {
+        console.error('No access token available')
         return
       }
 
-      setUser(session.user)
-      await Promise.all([
-        fetchUserProfile(session.access_token),
-        fetchJobDescriptions(session.access_token),
-        fetchTailoredResumes(session.access_token)
-      ])
-    } catch (error) {
-      console.error('Error checking user:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchUserProfile = async (token: string) => {
-    try {
       const response = await fetch('/api/profiles/get', {
+        method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
       })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.profile?.resume_content) {
+
+      const responseText = await response.text()
+      console.log('Profile API response:', responseText)
+
+      if (!response.ok) {
+        console.error('Profile API error:', response.status, responseText)
+        return
+      }
+
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error('Failed to parse profile response as JSON:', parseError)
+        console.error('Response text:', responseText)
+        return
+      }
+
+      if (data.profile) {
+        setUserProfile(data.profile)
+        if (data.profile.resume_content) {
           setResumeContent(data.profile.resume_content)
         }
       }
     } catch (error) {
-      console.error('Error fetching profile:', error)
+      console.error('Failed to fetch user profile:', error)
     }
   }
 
-  const fetchJobDescriptions = async (token: string) => {
-    try {
-      const response = await fetch('/api/jobs/list', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setJobDescriptions(data.jobs || [])
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching job descriptions:', error)
-    }
-  }
+  const fetchSavedResumes = async (accessToken: string) => {
+    if (!accessToken) return
 
-  const fetchTailoredResumes = async (token: string) => {
+    setLoadingResumes(true)
     try {
       const response = await fetch('/api/resumes/list', {
         headers: {
-          'Authorization': `Bearer ${token}`
-        }
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
       })
-      
+
+      const data = await response.json()
+
       if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setTailoredResumes(data.resumes || [])
-        }
+        setSavedResumes(data.data || [])
+      } else {
+        console.error('Failed to fetch saved resumes:', data.error || response.statusText)
+        setSavedResumes([]) // Set empty array on error
       }
     } catch (error) {
-      console.error('Error fetching tailored resumes:', error)
+      console.error('Error fetching saved resumes:', error)
+      setSavedResumes([]) // Set empty array on error
+    } finally {
+      setLoadingResumes(false)
     }
   }
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) return
+  const saveResumeContent = async () => {
+    if (!user) return
 
     try {
-      const text = await file.text()
-      const content: ResumeContent = {
-        rawText: text,
-        personalInfo: extractPersonalInfo(text),
-        summary: extractSummary(text),
-        experience: extractExperience(text),
-        education: extractEducation(text),
-        skills: extractSkills(text)
+      const session = await supabase.auth.getSession()
+      if (!session.data.session) return
+
+      const token = session.data.session.access_token
+      if (!token) {
+        alert('Authentication required')
+        return
       }
-
-      setResumeContent(content)
-      await saveProfile(content)
-    } catch (error) {
-      console.error('Error processing file:', error)
-      alert('Error processing file. Please try again.')
-    }
-  }
-
-  const saveProfile = async (content: ResumeContent) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
 
       const response = await fetch('/api/profiles/save', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({ resume_content: content })
+        body: JSON.stringify({
+          resume_content: resumeContent
+        }),
       })
+
+      const responseText = await response.text()
+      console.log('Save API response:', responseText)
 
       if (!response.ok) {
-        throw new Error('Failed to save profile')
+        console.error('Save API error:', response.status, responseText)
+        alert(`Failed to save: ${response.status} ${responseText}`)
+        return
       }
-    } catch (error) {
-      console.error('Save profile error:', error)
-    }
-  }
 
-  const handleCreateJob = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!newJob.title || !newJob.company || !newJob.description) return
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-
-      const response = await fetch('/api/jobs/create', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify(newJob)
-      })
+      let data
+      try {
+        data = JSON.parse(responseText)
+      } catch (parseError) {
+        console.error('Failed to parse save response as JSON:', parseError)
+        console.error('Response text:', responseText)
+        alert('Failed to save: Invalid response format')
+        return
+      }
 
       if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setJobDescriptions([...jobDescriptions, data.job])
-          setNewJob({ title: '', company: '', description: '' })
-        }
+        alert('Resume content saved successfully!')
+        await fetchUserProfile(user.id)
+      } else {
+        console.error('Save error:', data.error)
+        alert(`Failed to save: ${data.error}`)
       }
     } catch (error) {
-      console.error('Error creating job:', error)
+      console.error('Failed to save resume content:', error)
+      alert('Failed to save resume content')
     }
   }
 
-  const handleTailorResume = async () => {
-    if (!resumeContent || !selectedJobId) {
-      alert('Please upload a resume and select a job description')
+  const handleAITailorResume = async () => {
+    if (!jobTitle || !company || !jobDescription || (!resumeContent.rawText && !resumeContent.personalInfo.name)) {
+      alert('Please fill in all required fields including your resume content')
       return
     }
 
-    setIsProcessing(true)
+    setProcessingAI(true)
     try {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
+      const session = await supabase.auth.getSession()
+      if (!session.data.session) return
 
-      const response = await fetch('/api/resume/tailor', {
+      // First create job description
+      const jobResponse = await fetch('/api/jobs/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Authorization': `Bearer ${session.data.session.access_token}`,
         },
         body: JSON.stringify({
-          resumeContent,
-          jobDescriptionId: selectedJobId,
-          originalResumeId: 'original'
-        })
+          title: jobTitle,
+          company: company,
+          description: jobDescription,
+          requirements: jobDescription.split('\n').filter(line => line.trim().startsWith('-') || line.trim().startsWith('•')),
+          keywords: jobDescription.toLowerCase().match(/\b\w+\b/g)?.slice(0, 20) || []
+        }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success) {
-          setCurrentTailoredResume(data.data)
-          await fetchTailoredResumes(session.access_token)
-        }
-      } else {
-        const errorData = await response.json()
-        console.error('Tailor error:', errorData)
-        alert('Error tailoring resume. Please try again.')
-      }
+      if (!jobResponse.ok) throw new Error('Failed to create job description')
+      const jobData = await jobResponse.json()
+
+      // Then tailor resume
+      const tailorResponse = await fetch('/api/resume/tailor', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.data.session.access_token}`,
+        },
+        body: JSON.stringify({
+          resumeContent: resumeContent,
+          jobDescriptionId: jobData.data._id,
+          originalResumeId: 'dashboard-input'
+        }),
+      })
+
+      if (!tailorResponse.ok) throw new Error('Failed to tailor resume')
+      const tailorData = await tailorResponse.json()
+
+      setAiResponse(tailorData.data)
+      fetchSavedResumes(session.data.session.access_token)
     } catch (error) {
-      console.error('Error tailoring resume:', error)
-      alert('Error tailoring resume. Please try again.')
+      console.error('AI tailoring error:', error)
+      alert('Failed to tailor resume with AI')
     } finally {
-      setIsProcessing(false)
+      setProcessingAI(false)
     }
-  }
-
-  const downloadResume = (resume: TailoredResume) => {
-    const content = formatResumeForDownload(resume.tailoredContent)
-    const blob = new Blob([content], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `tailored-resume-${Date.now()}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-  }
-
-  const formatResumeForDownload = (content: ResumeContent): string => {
-    let formatted = ''
-    
-    if (content.personalInfo) {
-      const { name, email, phone, address } = content.personalInfo
-      formatted += `${name || 'Name'}\n`
-      formatted += `${email || 'email@example.com'} | ${phone || 'Phone'}\n`
-      formatted += `${address || 'Address'}\n\n`
-    }
-
-    if (content.summary) {
-      formatted += `PROFESSIONAL SUMMARY\n`
-      formatted += `${content.summary}\n\n`
-    }
-
-    if (content.experience?.length) {
-      formatted += `PROFESSIONAL EXPERIENCE\n`
-      content.experience.forEach(exp => {
-        formatted += `${exp.title} - ${exp.company} (${exp.duration})\n`
-        formatted += `${exp.description}\n\n`
-      })
-    }
-
-    if (content.education?.length) {
-      formatted += `EDUCATION\n`
-      content.education.forEach(edu => {
-        formatted += `${edu.degree} - ${edu.school} (${edu.year})\n`
-      })
-      formatted += '\n'
-    }
-
-    if (content.skills?.length) {
-      formatted += `SKILLS\n`
-      formatted += content.skills.join(', ') + '\n'
-    }
-
-    return formatted
-  }
-
-  // Helper functions for text extraction
-  const extractPersonalInfo = (text: string) => {
-    const emailMatch = text.match(/[\w.-]+@[\w.-]+\.\w+/)
-    const phoneMatch = text.match(/[\d\s\-\(\)]{10,}/)
-    
-    return {
-      name: text.split('\n')[0] || '',
-      email: emailMatch?.[0] || '',
-      phone: phoneMatch?.[0] || '',
-      address: ''
-    }
-  }
-
-  const extractSummary = (text: string) => {
-  const summarySection = text.match(/summary[:\n]([\s\S]*?)(?=experience|education|skills|$)/i)
-    return summarySection?.[1]?.trim() || ''
-  }
-
-  const extractExperience = (text: string) => {
-    return []
-  }
-
-  const extractEducation = (text: string) => {
-    return []
-  }
-
-  const extractSkills = (text: string) => {
-    const skillsSection = text.match(/skills[:\n](.*?)(?=experience|education|$)/i)
-    return skillsSection?.[1]?.split(/[,\n]/).map(s => s.trim()).filter(Boolean) || []
   }
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
-    router.push('/')
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    })
   }
 
   if (loading) {
@@ -356,303 +295,260 @@ export default function Dashboard() {
     )
   }
 
+  if (!user) {
+    return null
+  }
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <h1 className="text-2xl font-bold text-gray-900">Resume Tailor Dashboard</h1>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600">Welcome, {user?.email}</span>
-              <Button onClick={handleSignOut} variant="outline">Sign Out</Button>
+    <div className="min-h-screen bg-[#0f172a]">
+      {/* Header */}
+      <div className="bg-[#1e293b] border-b border-slate-700">
+        <div className="container mx-auto px-4 py-4">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-6 h-6 text-primary" />
+              <h1 className="text-xl font-bold text-white">AI Resume Tailor</h1>
             </div>
+            <Button onClick={handleSignOut} variant="outline" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+              Sign Out
+            </Button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Upload Resume Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Upload className="mr-2 h-5 w-5" />
-                Upload Resume
-              </CardTitle>
-              <CardDescription>
-                Upload your base resume to get started
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <input
-                  type="file"
-                  accept=".txt,.pdf,.doc,.docx"
-                  onChange={handleFileUpload}
-                  className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {resumeContent && (
-                  <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-                    <p className="text-sm text-green-800">✓ Resume uploaded successfully</p>
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            {/* Card 1: Existing Resume Content */}
+            <Card className="border-2 border-primary/30 bg-slate-800">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Upload className="w-5 h-5 text-primary" />
+                    <CardTitle className="text-xl text-white">Your Resume Content</CardTitle>
                   </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Job Descriptions Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <FileText className="mr-2 h-5 w-5" />
-                Job Descriptions
-              </CardTitle>
-              <CardDescription>
-                Add job descriptions to tailor your resume
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateJob} className="space-y-3 mb-4">
-                <input
-                  type="text"
-                  placeholder="Job Title"
-                  value={newJob.title}
-                  onChange={(e) => setNewJob({...newJob, title: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                />
-                <input
-                  type="text"
-                  placeholder="Company"
-                  value={newJob.company}
-                  onChange={(e) => setNewJob({...newJob, company: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                />
-                <textarea
-                  placeholder="Job Description"
-                  value={newJob.description}
-                  onChange={(e) => setNewJob({...newJob, description: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm h-20"
-                />
-                <Button type="submit" size="sm" className="w-full">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Job
-                </Button>
-              </form>
-
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {jobDescriptions.map((job) => (
-                  <div
-                    key={job._id}
-                    onClick={() => setSelectedJobId(job._id!)}
-                    className={`p-3 border rounded-md cursor-pointer transition-colors ${
-                      selectedJobId === job._id
-                        ? 'border-blue-500 bg-blue-50'
-                        : 'border-gray-200 hover:border-gray-300'
-                    }`}
-                  >
-                    <h4 className="font-medium text-sm">{job.title}</h4>
-                    <p className="text-xs text-gray-600">{job.company}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* AI Tailoring Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <Zap className="mr-2 h-5 w-5" />
-                AI Tailoring
-              </CardTitle>
-              <CardDescription>
-                Generate optimized resume with AI
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button
-                onClick={handleTailorResume}
-                disabled={!resumeContent || !selectedJobId || isProcessing}
-                className="w-full"
-              >
-                {isProcessing ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Processing...
-                  </>
-                ) : (
-                  <>
-                    <Zap className="mr-2 h-4 w-4" />
-                    Tailor Resume
-                  </>
-                )}
-              </Button>
-
-              {currentTailoredResume && (
-                <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-md">
-                  <h4 className="font-medium text-green-800">✓ Resume Tailored Successfully!</h4>
-                  <p className="text-sm text-green-600 mt-1">
-                    Score: {currentTailoredResume.score}% | 
-                    Keywords: {currentTailoredResume.keywordMatches.length} |
-                    Time: {currentTailoredResume.processingTime}ms
-                  </p>
-                  <Button
-                    onClick={() => downloadResume(currentTailoredResume)}
-                    size="sm"
-                    className="mt-2 w-full"
-                  >
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
+                  <Button onClick={saveResumeContent} size="sm" className="bg-primary hover:bg-primary/90">
+                    <Save className="w-4 h-4 mr-1" />
+                    Save
                   </Button>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                <CardDescription className="text-slate-300">
+                  Enter your existing resume information
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-200 mb-1">Paste Your Complete Resume</label>
+                  <textarea 
+                    rows={12}
+                    value={resumeContent.rawText || ''}
+                    onChange={(e) => setResumeContent({
+                      ...resumeContent,
+                      rawText: e.target.value,
+                      // Also update the name field for AI processing if it's empty
+                      personalInfo: {
+                        ...resumeContent.personalInfo,
+                        name: resumeContent.personalInfo.name || 'Resume User'
+                      }
+                    })}
+                    placeholder="Paste your entire resume content here... Include all sections: personal info, summary, experience, education, skills, etc."
+                    className="w-full p-3 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-primary focus:border-primary text-sm font-mono leading-relaxed placeholder-slate-400"
+                  />
+                  <p className="text-xs text-slate-400 mt-2">
+                    Tip: Copy and paste your entire resume text. The AI will extract and optimize the relevant information.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
 
-        {/* Optimized Resume Display */}
-        {currentTailoredResume && (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Optimized Resume</CardTitle>
-              <CardDescription>
-                Complete tailored resume content optimized for the selected job
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {/* Personal Info */}
-                {currentTailoredResume.tailoredContent.personalInfo && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">Contact Information</h3>
-                    <div className="bg-gray-50 p-4 rounded-md">
-                      <p className="font-medium">{currentTailoredResume.tailoredContent.personalInfo.name}</p>
-                      <p>{currentTailoredResume.tailoredContent.personalInfo.email}</p>
-                      <p>{currentTailoredResume.tailoredContent.personalInfo.phone}</p>
-                      <p>{currentTailoredResume.tailoredContent.personalInfo.address}</p>
+            {/* Card 2: Job Description */}
+            <Card className="border-2 border-blue-500/30 bg-slate-800">
+              <CardHeader>
+                <div className="flex items-center space-x-2">
+                  <Briefcase className="w-5 h-5 text-blue-400" />
+                  <CardTitle className="text-xl text-white">Job Description</CardTitle>
+                </div>
+                <CardDescription className="text-slate-300">
+                  Enter the job details you want to tailor your resume for
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-200 mb-1">Job Title</label>
+                  <input 
+                    type="text" 
+                    value={jobTitle}
+                    onChange={(e) => setJobTitle(e.target.value)}
+                    placeholder="e.g., Senior Software Engineer"
+                    className="w-full p-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-sm placeholder-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-200 mb-1">Company</label>
+                  <input 
+                    type="text" 
+                    value={company}
+                    onChange={(e) => setCompany(e.target.value)}
+                    placeholder="e.g., Google, Microsoft, Startup Inc..."
+                    className="w-full p-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-sm placeholder-slate-400"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-200 mb-1">Job Description</label>
+                  <textarea 
+                    rows={6}
+                    value={jobDescription}
+                    onChange={(e) => setJobDescription(e.target.value)}
+                    placeholder="Paste the full job description here..."
+                    className="w-full p-2 border border-slate-600 bg-slate-700 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 text-sm placeholder-slate-400"
+                  />
+                </div>
+                <Button 
+                  onClick={handleAITailorResume}
+                  disabled={processingAI}
+                  className="w-full bg-blue-600 hover:bg-blue-700 py-2"
+                >
+                  {processingAI ? (
+                    <div className="flex items-center">
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Processing...
+                    </div>
+                  ) : (
+                    <>
+                      <Bot className="w-4 h-4 mr-2" />
+                      Tailor with AI
+                    </>
+                  )}
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Card 3: AI Response (Conditional) */}
+            {aiResponse && (
+              <Card className="border-2 border-purple-500/30 bg-slate-800 lg:col-span-2">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Star className="w-5 h-5 text-purple-400" />
+                      <CardTitle className="text-xl text-white">AI-Tailored Resume</CardTitle>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <span className="bg-purple-500/20 text-purple-300 px-3 py-1 rounded-full text-sm font-medium border border-purple-500/30">
+                        Match: {aiResponse.score}%
+                      </span>
+                      <Button size="sm" variant="outline" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+                        <Download className="w-4 h-4 mr-1" />
+                        Download PDF
+                      </Button>
                     </div>
                   </div>
-                )}
-
-                {/* Summary */}
-                {currentTailoredResume.tailoredContent.summary && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">Professional Summary</h3>
-                    <div className="bg-gray-50 p-4 rounded-md">
-                      <p className="whitespace-pre-wrap">{currentTailoredResume.tailoredContent.summary}</p>
-                    </div>
+                  <CardDescription className="text-slate-300">
+                    Your resume optimized for this specific job opportunity
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="bg-slate-700 p-4 rounded-lg">
+                    <h4 className="font-semibold text-white mb-2">Optimized Summary</h4>
+                    <p className="text-slate-300 text-sm">{aiResponse.tailoredResume?.summary}</p>
                   </div>
-                )}
-
-                {/* Experience */}
-                {currentTailoredResume.tailoredContent.experience?.length && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">Professional Experience</h3>
-                    <div className="space-y-4">
-                      {currentTailoredResume.tailoredContent.experience.map((exp, index) => (
-                        <div key={index} className="bg-gray-50 p-4 rounded-md">
-                          <h4 className="font-medium">{exp.title} - {exp.company}</h4>
-                          <p className="text-sm text-gray-600 mb-2">{exp.duration}</p>
-                          <p className="whitespace-pre-wrap">{exp.description}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Education */}
-                {currentTailoredResume.tailoredContent.education?.length && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">Education</h3>
-                    <div className="bg-gray-50 p-4 rounded-md">
-                      {currentTailoredResume.tailoredContent.education.map((edu, index) => (
-                        <div key={index} className="mb-2 last:mb-0">
-                          <p className="font-medium">{edu.degree}</p>
-                          <p className="text-sm text-gray-600">{edu.school} - {edu.year}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Skills */}
-                {currentTailoredResume.tailoredContent.skills?.length && (
-                  <div>
-                    <h3 className="font-semibold text-lg mb-2">Skills</h3>
-                    <div className="bg-gray-50 p-4 rounded-md">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-slate-700 p-4 rounded-lg">
+                      <h4 className="font-semibold text-white mb-2">Key Skills Highlighted</h4>
                       <div className="flex flex-wrap gap-2">
-                        {currentTailoredResume.tailoredContent.skills.map((skill, index) => (
-                          <span key={index} className="bg-blue-100 text-blue-800 px-2 py-1 rounded-md text-sm">
+                        {aiResponse.tailoredResume?.skills?.slice(0, 8).map((skill: string, index: number) => (
+                          <span key={index} className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-xs border border-purple-500/30">
                             {skill}
                           </span>
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
-
-                {/* AI Insights */}
-                <div>
-                  <h3 className="font-semibold text-lg mb-2">AI Insights</h3>
-                  <div className="bg-blue-50 p-4 rounded-md space-y-3">
-                    <div>
-                      <h4 className="font-medium text-blue-800">Matched Keywords</h4>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {currentTailoredResume.keywordMatches.map((keyword, index) => (
-                          <span key={index} className="bg-blue-200 text-blue-800 px-2 py-1 rounded text-xs">
+                    <div className="bg-slate-700 p-4 rounded-lg">
+                      <h4 className="font-semibold text-white mb-2">Keyword Matches</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {aiResponse.keywordMatches?.slice(0, 6).map((keyword: string, index: number) => (
+                          <span key={index} className="bg-green-500/20 text-green-300 px-2 py-1 rounded text-xs border border-green-500/30">
                             {keyword}
                           </span>
                         ))}
                       </div>
                     </div>
-                    <div>
-                      <h4 className="font-medium text-blue-800">Suggestions</h4>
-                      <ul className="mt-1 space-y-1">
-                        {currentTailoredResume.suggestions.map((suggestion, index) => (
-                          <li key={index} className="text-sm text-blue-700">• {suggestion}</li>
+                  </div>
+                  {aiResponse.suggestions && (
+                    <div className="bg-blue-500/10 p-4 rounded-lg border border-blue-500/20">
+                      <h4 className="font-semibold text-white mb-2">AI Suggestions</h4>
+                      <ul className="text-sm text-slate-300 space-y-1">
+                        {aiResponse.suggestions.slice(0, 3).map((suggestion: string, index: number) => (
+                          <li key={index} className="flex items-start">
+                            <span className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-2 flex-shrink-0"></span>
+                            {suggestion}
+                          </li>
                         ))}
                       </ul>
                     </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-        {/* Previous Tailored Resumes */}
-        {tailoredResumes.length > 0 && (
-          <Card className="mt-8">
-            <CardHeader>
-              <CardTitle>Previous Tailored Resumes</CardTitle>
-              <CardDescription>
-                Your previously generated resumes
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4">
-                {tailoredResumes.map((resume) => (
-                  <div key={resume._id} className="border border-gray-200 rounded-md p-4 flex justify-between items-start">
-                    <div>
-                      <p className="font-medium">Score: {resume.score}%</p>
-                      <p className="text-sm text-gray-600">Keywords: {resume.keywordMatches.length}</p>
-                      <p className="text-xs text-gray-500">Processing time: {resume.processingTime}ms</p>
-                    </div>
-                    <Button
-                      onClick={() => downloadResume(resume)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      Download
-                    </Button>
+            {/* Card 4: Saved Resumes */}
+            <Card className={`${aiResponse ? "lg:col-span-2" : "lg:col-span-2"} bg-slate-800 border-2 border-slate-600`}>
+              <CardHeader>
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-5 h-5 text-slate-400" />
+                  <CardTitle className="text-xl text-white">Saved Resumes</CardTitle>
+                </div>
+                <CardDescription className="text-slate-300">
+                  Your previously AI-tailored resumes from MongoDB
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loadingResumes ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </main>
+                ) : savedResumes.length > 0 ? (
+                  <div className="space-y-3">
+                    {savedResumes.map((resume) => (
+                      <div key={resume._id} className="flex items-center justify-between p-4 border border-slate-600 bg-slate-700 rounded-lg hover:border-primary/50 transition-colors">
+                        <div className="flex items-center space-x-3">
+                          <FileText className="w-5 h-5 text-primary" />
+                          <div>
+                            <p className="font-medium text-white">
+                              {resume.tailoredContent?.personalInfo?.name || 'Tailored Resume'}
+                            </p>
+                            <p className="text-sm text-slate-400 flex items-center">
+                              <Clock className="w-4 h-4 mr-1" />
+                              {formatDate(resume.createdAt)} • Match: {resume.aiMetadata?.confidence || 0}%
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Button variant="outline" size="sm" className="bg-slate-600 text-white hover:bg-slate-500 border-slate-500">
+                            <Download className="w-4 h-4 mr-1" />
+                            Download
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <div className="text-center pt-4">
+                      <p className="text-sm text-slate-400">Total saved resumes: {savedResumes.length}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="w-12 h-12 text-slate-500 mx-auto mb-4" />
+                    <p className="text-slate-400 mb-2">No saved resumes yet</p>
+                    <p className="text-sm text-slate-500">AI-tailored resumes will appear here after processing</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
